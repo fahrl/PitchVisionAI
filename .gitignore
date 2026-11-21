@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+.env.*
+
+# AI Models
+*.pt
+*.onnx
+*.engine
+*.weights
+
+# Dataset
+datasets/*
+!datasets/.gitkeep
+
+# YOLO outputs
+runs/
+outputs/*
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# Node.js
+node_modules/
+dist/
+build/
+
+# Temporary files
+*.log
+.DS_Store
+
+# Temporary test images
+bus.jpg

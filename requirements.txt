@@ -1,0 +1,23 @@
+
+# Computer Vision
+ultralytics
+opencv-python
+supervision
+
+# Data Processing
+numpy
+pandas
+scipy
+
+# Visualization
+matplotlib
+Pillow
+
+# Backend
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Utilities
+tqdm
+PyYAML
