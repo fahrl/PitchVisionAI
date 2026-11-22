@@ -1,3 +1,4 @@
+
 # Python
 __pycache__/
 *.py[cod]
@@ -19,13 +20,8 @@ env/
 *.engine
 *.weights
 
-# Dataset
-datasets/*
-!datasets/.gitkeep
-
 # YOLO outputs
 runs/
-outputs/*
 
 # Jupyter Notebook
 .ipynb_checkpoints/

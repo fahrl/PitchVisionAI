@@ -1,0 +1,11 @@
+{
+    "Team A": {
+        "description": "Lighter jersey cluster",
+        "median_lab_brightness": 206.5
+    },
+    "Team B": {
+        "description": "Darker jersey cluster",
+        "median_lab_brightness": 110.0
+    },
+    "method": "HSV and Lab torso features + K-Means"
+}
