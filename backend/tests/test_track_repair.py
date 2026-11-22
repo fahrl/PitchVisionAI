@@ -1,16 +1,15 @@
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
-P = Path(__file__).resolve().parents[2]
-CSV_IN = P / "outputs" / "pipeline" / "tracking_final.csv"
-CSV_OUT = P / "outputs" / "pipeline" / "tracking_repaired.csv"
+from clip_config import CLIP, out
+
+CSV_IN = out("pipeline") / "tracking_final.csv"
+CSV_OUT = out("pipeline") / "tracking_repaired.csv"
 TEAMS = ("Team A", "Team B")
-MAX_GAP = 20       # frame maksimum untuk menyambung/interpolasi
-V_MAX = 0.4        # m/frame (sekitar 12 m/s pada 30 fps)
-SLACK = 1.5        # toleransi posisi (m)
-DUP_DIST = 0.5     # baris interpolasi dekat pemain asli dibuang (m)
+MAX_GAP = 20
+V_MAX = 0.4
+SLACK = 1.5
+DUP_DIST = 0.5
 COLS = ["x", "y", "x1", "y1", "x2", "y2", "px", "py"]
 
 
@@ -70,6 +69,7 @@ def interpolate(df):
 
 
 def main():
+    print("CLIP:", CLIP)
     df = pd.read_csv(CSV_IN)
     df["interp"] = 0
     report(df, "SEBELUM:")
@@ -84,7 +84,8 @@ def main():
     new = interpolate(df)
     print(f"\nBaris interpolasi sebelum dedup: {len(new)}")
     if len(new):
-        real = {k: g[["px", "py"]].to_numpy() for k, g in df[df.team.isin(TEAMS)].groupby(["frame", "team"])}
+        real = {k: g[["px", "py"]].to_numpy()
+                for k, g in df[df.team.isin(TEAMS)].groupby(["frame", "team"])}
         keep = []
         for r in new.itertuples(index=False):
             pts = real.get((r.frame, r.team))

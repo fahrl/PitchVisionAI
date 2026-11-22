@@ -1,18 +1,14 @@
 import json
-from pathlib import Path
 
 import cv2
 import numpy as np
 import pandas as pd
 
-P = Path(__file__).resolve().parents[2]
-VIDEO = P / "datasets" / "test_videos" / "football_test.mp4"
-H1_JSON = P / "outputs" / "pitch_mapping" / "homography_frame_1.json"
-TEAM_CSV = P / "outputs" / "team_classification" / "team_classification_botsort.csv"
-OUT = P / "outputs" / "pitch_mapping"
-OUT_CSV = OUT / "tracking_pitch_coords.csv"
+from clip_config import CLIP, VIDEO, out
+
+OUT = out("pitch_mapping")
+TRK_CSV = out("player_tracking") / "tracking_data_botsort_s1280.csv"
 OUT_H = OUT / "homography_all_frames.npy"
-CHECK_FRAMES = [1, 86, 172, 258, 344]
 L, W = 105.0, 68.0
 
 
@@ -26,7 +22,6 @@ def green_mask(frame, boxes):
 
 
 def pitch_lines():
-    """Daftar polyline (meter) garis lapangan."""
     t = np.linspace(0, 2 * np.pi, 120)
     lines = [
         [(0, 0), (L, 0), (L, W), (0, W), (0, 0)],
@@ -37,31 +32,43 @@ def pitch_lines():
         [(0, 24.84), (5.5, 24.84), (5.5, 43.16), (0, 43.16)],
         [(L, 24.84), (L - 5.5, 24.84), (L - 5.5, 43.16), (L, 43.16)],
     ]
-    out = []
+    res = []
     for ln in lines:
         pts = []
         for a, b in zip(ln[:-1], ln[1:]):
             for s in np.linspace(0, 1, 40, endpoint=False):
                 pts.append((a[0] + s * (b[0] - a[0]), a[1] + s * (b[1] - a[1])))
         pts.append(ln[-1])
-        out.append(np.array(pts, np.float32))
-    return out
+        res.append(np.array(pts, np.float32))
+    return res
 
 
 def main():
-    H1 = np.array(json.loads(H1_JSON.read_text())["H"], np.float64)
-    df = pd.read_csv(TEAM_CSV)
+    print("CLIP:", CLIP, flush=True)
+    anchors = {}
+    for p in OUT.glob("homography_frame_*.json"):
+        d = json.loads(p.read_text())
+        anchors[int(d["frame"])] = np.array(d["H"], np.float64)
+    if 1 not in anchors:
+        raise RuntimeError("homography_frame_1.json belum ada")
+    akeys = sorted(anchors)
+    print("Jangkar di frame:", akeys, flush=True)
+
+    df = pd.read_csv(TRK_CSV)
     by_frame = {f: g[["x1", "y1", "x2", "y2"]].to_numpy() for f, g in df.groupby("frame")}
 
     cap = cv2.VideoCapture(str(VIDEO))
     ok, prev = cap.read()
     if not ok:
         raise RuntimeError("Cannot read video")
-    frames = {1: prev.copy()}
-    Hs = {1: H1}
-    M_1t = np.eye(3)
+    frames_all = [prev.copy()]          # hanya frame yang dibutuhkan disimpan nanti
+    keep_idx = set()
+    cum = {1: np.eye(3)}                # memetakan frame 1 -> frame n
     inl_log = []
     n = 1
+    store = {1: prev.copy()}
+    total_est = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    want = set(akeys) | {1, total_est // 4, total_est // 2, 3 * total_est // 4, total_est}
     while True:
         ok, cur = cap.read()
         if not ok:
@@ -82,47 +89,50 @@ def main():
             M = np.eye(3)
             inl_log.append(0)
             print(f"PERINGATAN: frame {n} gagal, dianggap diam", flush=True)
-        M_1t = M @ M_1t
-        Hs[n] = H1 @ np.linalg.inv(M_1t)
-        if n in CHECK_FRAMES:
-            frames[n] = cur.copy()
+        cum[n] = M @ cum[n - 1]
+        if n in want:
+            store[n] = cur.copy()
         prev = cur
-        if n % 50 == 0:
+        if n % 100 == 0:
             print(f"Frame {n}", flush=True)
     cap.release()
-
     total = n
-    np.save(OUT_H, np.stack([Hs[i] for i in range(1, total + 1)]))
-    print(f"\nInlier antar-frame: min {min(inl_log)}, median {int(np.median(inl_log))}")
+    print(f"\nFrame: {total} | inlier antar-frame: min {min(inl_log)}, median {int(np.median(inl_log))}")
+    print("Frame inlier < 50:", sum(1 for v in inl_log if v < 50))
 
-    px = np.zeros(len(df))
-    py = np.zeros(len(df))
-    for f, idx in df.groupby("frame").indices.items():
-        pts = df.iloc[idx][["x", "y"]].to_numpy(np.float32).reshape(-1, 1, 2)
-        q = cv2.perspectiveTransform(pts, Hs[f]).reshape(-1, 2)
-        px[idx], py[idx] = q[:, 0], q[:, 1]
-    df["px"], df["py"] = px, py
-    df.to_csv(OUT_CSV, index=False)
+    def H_from(a, f):
+        # frame a -> piksel frame f -> lapangan, memakai jangkar a
+        return anchors[a] @ cum[a] @ np.linalg.inv(cum[f])
 
-    pl = df[df.team.isin(["Team A", "Team B"])]
-    inside = (pl.px > -3) & (pl.px < L + 3) & (pl.py > -3) & (pl.py < W + 3)
-    print("\nPemain Team A/B di dalam lapangan (toleransi 3 m) per frame check:")
-    for f in CHECK_FRAMES:
-        s = pl[pl.frame == f]
-        ins = ((s.px > -3) & (s.px < L + 3) & (s.py > -3) & (s.py < W + 3)).sum()
-        print(f"  frame {f:>3}: {ins}/{len(s)}")
-    print(f"Seluruh klip: {inside.mean() * 100:.1f}% di dalam lapangan")
+    Hs = []
+    for f in range(1, total + 1):
+        a = min(akeys, key=lambda k: abs(k - f))
+        Hs.append(H_from(a, f))
+    np.save(OUT_H, np.stack(Hs))
+
+    # drift: bandingkan klik jangkar dengan prediksi rantai dari jangkar lain
+    grid = np.array([[x, y] for x in np.linspace(300, 1600, 5)
+                     for y in np.linspace(300, 900, 4)], np.float32).reshape(-1, 1, 2)
+    if len(akeys) > 1:
+        print("\nDRIFT (selisih klik vs prediksi rantai, di tengah gambar):")
+        for a in akeys:
+            for b in akeys:
+                if a == b:
+                    continue
+                pa = cv2.perspectiveTransform(grid, anchors[a]).reshape(-1, 2)
+                pb = cv2.perspectiveTransform(grid, H_from(b, a)).reshape(-1, 2)
+                d = np.linalg.norm(pa - pb, axis=1)
+                print(f"  jangkar {b} -> frame {a}: rata-rata {d.mean():.2f} m, maks {d.max():.2f} m")
 
     lines = pitch_lines()
-    for f in CHECK_FRAMES:
-        img = frames[f]
-        Hinv = np.linalg.inv(Hs[f])
+    for f in sorted(store):
+        img = store[f]
+        Hinv = np.linalg.inv(Hs[f - 1])
         for ln in lines:
             q = cv2.perspectiveTransform(ln.reshape(-1, 1, 2), Hinv).reshape(-1, 2)
             cv2.polylines(img, [q.astype(np.int32).reshape(-1, 1, 2)], False, (0, 0, 255), 2, cv2.LINE_AA)
         cv2.imwrite(str(OUT / f"overlay_frame_{f}.png"), img)
-    print("\nCSV    :", OUT_CSV)
-    print("Overlay:", OUT)
+    print("Overlay disimpan di:", OUT, "untuk frame", sorted(store))
 
 
 if __name__ == "__main__":

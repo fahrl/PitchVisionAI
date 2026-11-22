@@ -1,0 +1,9 @@
+clip,seg,frames,team,label_manual,algoritma,frame_valid,status,selisih_pemain
+clip1,0,Jan-90,Team A,,2-3-5,35,tidak dinilai,
+clip1,0,Jan-90,Team B,4-5-1,4-5-1,36,cocok,0.0
+clip1,1,91-180,Team A,3-3-4,3-4-3,90,beda,2.0
+clip1,1,91-180,Team B,4-5-1,4-5-1,90,cocok,0.0
+clip1,2,181-270,Team A,3-3-4,3-3-4,71,cocok,0.0
+clip1,2,181-270,Team B,5-4-1,5-4-1,86,cocok,0.0
+clip1,3,271-360,Team A,,3-2-5,74,tidak dinilai,
+clip1,3,271-360,Team B,5-4-1,5-4-1,31,cocok,0.0

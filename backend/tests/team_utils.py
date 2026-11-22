@@ -1,6 +1,10 @@
 import cv2
 import numpy as np
 
+# Referensi warna Lab (skala OpenCV) dari median track clip1. Dibekukan.
+REF_LIGHT = np.array([248.0, 129.0, 128.0])   # Spanyol (putih)
+REF_DARK = np.array([110.0, 131.0, 132.0])    # Kroasia (hitam)
+
 
 def jersey_lab(frame, box):
     """Median Lab dari area torso, piksel rumput dibuang. None jika tidak valid."""
@@ -29,26 +33,11 @@ def jersey_lab(frame, box):
 
 
 def split_teams(X, min_dist=30.0):
-    """KMeans 2 cluster, outlier (median + 3 MAD) jadi -1. Return (labels, dist, light_cluster)."""
-    from sklearn.cluster import KMeans
-
-    km = KMeans(n_clusters=2, n_init=10, random_state=42).fit(X)
-    lab0 = km.labels_
-    d0 = np.linalg.norm(X - km.cluster_centers_[lab0], axis=1)
-    thr = []
-    for c in range(2):
-        d = d0[lab0 == c]
-        med = np.median(d)
-        mad = np.median(np.abs(d - med)) * 1.4826
-        thr.append(max(min_dist, med + 3 * mad))
-    inlier = np.array([d0[i] <= thr[lab0[i]] for i in range(len(X))])
-
-    centers = np.array([X[inlier & (lab0 == c)].mean(axis=0) for c in range(2)])
-    dist_all = np.linalg.norm(X[:, None, :] - centers[None, :, :], axis=2)
-    labels = dist_all.argmin(axis=1)
-    dist = dist_all.min(axis=1)
-    for i in range(len(X)):
-        if dist[i] > thr[labels[i]]:
-            labels[i] = -1
-    light = int(np.argmax(centers[:, 0]))
-    return labels, dist, light
+    """Tugaskan ke pusat warna beku. Jarak > min_dist ke kedua pusat = -1 (Other).
+    Return (labels, dist, light_cluster); cluster 0 = putih, 1 = hitam."""
+    centers = np.stack([REF_LIGHT, REF_DARK])
+    d = np.linalg.norm(X[:, None, :] - centers[None, :, :], axis=2)
+    labels = d.argmin(axis=1)
+    dist = d.min(axis=1)
+    labels = np.where(dist > min_dist, -1, labels)
+    return labels, dist, 0

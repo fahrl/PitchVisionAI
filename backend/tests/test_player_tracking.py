@@ -1,38 +1,38 @@
 from pathlib import Path
 
 import cv2
-import numpy as np
 import pandas as pd
 from ultralytics import YOLO
 
-PROJECT_DIR = Path(__file__).resolve().parents[2]
-VIDEO_PATH = PROJECT_DIR / "datasets" / "test_videos" / "football_test.mp4"
-MODEL_PATH = PROJECT_DIR / "yolo26n.pt"
-TRACKER_CFG = PROJECT_DIR / "backend" / "config" / "botsort_football.yaml"
-OUTPUT_DIR = PROJECT_DIR / "outputs" / "player_tracking"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_CSV = OUTPUT_DIR / "tracking_data_botsort_s1280.csv"
-OUTPUT_VIDEO = OUTPUT_DIR / "football_tracking_botsort_s1280.mp4"
+from clip_config import CLIP, VIDEO, out
 
-CONF, IMGSZ, IOU = 0.25, 1280, 0.70
+P = Path(__file__).resolve().parents[2]
+MODEL_PATH = P / "yolo26s.pt"
+TRACKER_CFG = P / "backend" / "config" / "botsort_football.yaml"
+OUT = out("player_tracking")
+OUT_CSV = OUT / "tracking_data_botsort_s1280.csv"
+OUT_VIDEO = OUT / "football_tracking_botsort_s1280.mp4"
+
+CONF, IMGSZ, IOU = 0.25, 1280, 0.70   # sama persis dengan clip1
 
 
 def main():
-    cap = cv2.VideoCapture(str(VIDEO_PATH))
+    print("CLIP:", CLIP, "|", VIDEO, flush=True)
+    cap = cv2.VideoCapture(str(VIDEO))
     if not cap.isOpened():
-        raise RuntimeError(f"Cannot open {VIDEO_PATH}")
+        raise RuntimeError(f"Cannot open {VIDEO}")
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
-    writer = cv2.VideoWriter(str(OUTPUT_VIDEO), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    writer = cv2.VideoWriter(str(OUT_VIDEO), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
     model = YOLO(str(MODEL_PATH))
     rows = []
 
     results = model.track(
-        source=str(VIDEO_PATH), stream=True, persist=True,
+        source=str(VIDEO), stream=True, persist=True,
         tracker=str(TRACKER_CFG), classes=[0], conf=CONF, imgsz=IMGSZ, iou=IOU,
         device="cpu", verbose=False,
     )
@@ -60,22 +60,16 @@ def main():
 
     writer.release()
     df = pd.DataFrame(rows)
-    df.to_csv(OUTPUT_CSV, index=False)
+    df.to_csv(OUT_CSV, index=False)
 
     lengths = df.groupby("track_id").size()
-    bins = pd.cut(lengths, [0, 10, 30, 100, 299, 10**6],
-                  labels=["1-10", "11-30", "31-100", "101-299", "300+"])
     print("\nTRACKING SUMMARY")
     print(f"Frames with detections : {df['frame'].nunique()}")
     print(f"Total detections       : {len(df)}")
     print(f"Unique track IDs       : {df['track_id'].nunique()}")
     print(f"Avg detections/frame   : {len(df) / df['frame'].nunique():.2f}")
-    print(f"Avg confidence         : {df['confidence'].mean():.4f}")
     print(f"Tracks > 100 frames    : {int((lengths > 100).sum())}")
-    print("Track duration distribution:")
-    print(bins.value_counts().sort_index().to_string())
-    print("CSV  :", OUTPUT_CSV)
-    print("Video:", OUTPUT_VIDEO)
+    print("CSV  :", OUT_CSV)
 
 
 if __name__ == "__main__":

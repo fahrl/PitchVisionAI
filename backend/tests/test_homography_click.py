@@ -1,33 +1,40 @@
 import json
-from pathlib import Path
+import os
 
 import cv2
 import numpy as np
 
-P = Path(__file__).resolve().parents[2]
-VIDEO = P / "datasets" / "test_videos" / "football_test.mp4"
-OUT = P / "outputs" / "pitch_mapping"
-OUT.mkdir(parents=True, exist_ok=True)
+from clip_config import CLIP, VIDEO, out
 
-FRAME_NUMBER = 1      # 1-based
+OUT = out("pitch_mapping")
+FRAME_NUMBER = int(os.environ.get("FRAME", "1"))   # 1-based
 SCALE = 0.6
 L, W = 105.0, 68.0
 
-# (nama prompt, (x sepanjang lapangan, y lebar) dalam meter)
 LANDMARKS = [
-    ("1. Garis tengah bertemu garis samping JAUH (atas)", (52.5, 0.0)),
-    ("2. Titik tengah lapangan (center spot)", (52.5, W / 2)),
-    ("3. Lingkaran tengah x garis tengah, sisi ATAS", (52.5, W / 2 - 9.15)),
-    ("4. Lingkaran tengah x garis tengah, sisi BAWAH", (52.5, W / 2 + 9.15)),
-    ("5. Kotak penalti kanan: sudut luar ATAS", (L - 16.5, 13.84)),
-    ("6. Kotak penalti kanan: sudut luar BAWAH", (L - 16.5, 54.16)),
-    ("7. Kotak penalti kanan: garis atas bertemu garis gawang", (L, 13.84)),
-    ("8. Kotak 6 yard kanan: sudut luar ATAS", (L - 5.5, 24.84)),
-    ("9. Corner kanan atas (bendera)", (L, 0.0)),
+    ("Garis tengah x garis samping JAUH (atas)", (52.5, 0.0)),
+    ("Garis tengah x garis samping DEKAT (bawah)", (52.5, W)),
+    ("Titik tengah lapangan (center spot)", (52.5, W / 2)),
+    ("Lingkaran tengah x garis tengah, sisi ATAS", (52.5, W / 2 - 9.15)),
+    ("Lingkaran tengah x garis tengah, sisi BAWAH", (52.5, W / 2 + 9.15)),
+    ("KANAN: kotak penalti sudut luar ATAS", (L - 16.5, 13.84)),
+    ("KANAN: kotak penalti sudut luar BAWAH", (L - 16.5, 54.16)),
+    ("KANAN: garis atas penalti x garis gawang", (L, 13.84)),
+    ("KANAN: kotak 6 yard sudut luar ATAS", (L - 5.5, 24.84)),
+    ("KANAN: corner atas", (L, 0.0)),
+    ("KIRI: kotak penalti sudut luar ATAS", (16.5, 13.84)),
+    ("KIRI: kotak penalti sudut luar BAWAH", (16.5, 54.16)),
+    ("KIRI: garis atas penalti x garis gawang", (0.0, 13.84)),
+    ("KIRI: garis bawah penalti x garis gawang", (0.0, 54.16)),
+    ("KIRI: kotak 6 yard sudut luar ATAS", (5.5, 24.84)),
+    ("KIRI: kotak 6 yard sudut luar BAWAH", (5.5, 43.16)),
+    ("KIRI: corner atas", (0.0, 0.0)),
+    ("KIRI: corner bawah", (0.0, W)),
 ]
 
 
 def main():
+    print("CLIP:", CLIP, "| FRAME:", FRAME_NUMBER)
     cap = cv2.VideoCapture(str(VIDEO))
     cap.set(cv2.CAP_PROP_POS_FRAMES, FRAME_NUMBER - 1)
     ok, frame = cap.read()
@@ -46,7 +53,7 @@ def main():
     cv2.namedWindow(win)
     cv2.setMouseCallback(win, on_mouse)
 
-    img_pts, pitch_pts = [], []
+    img_pts, pitch_pts, names = [], [], []
     done = False
     for name, xy in LANDMARKS:
         if done:
@@ -64,6 +71,7 @@ def main():
             if state["pt"] is not None:
                 img_pts.append(state["pt"])
                 pitch_pts.append(xy)
+                names.append(name)
                 break
             if k == ord("s"):
                 break
@@ -85,8 +93,8 @@ def main():
     err = np.linalg.norm(proj - pitch_pts, axis=1)
     print(f"Titik: {len(img_pts)} | inlier: {int(mask.sum())}")
     print(f"Error reproyeksi: rata-rata {err.mean():.2f} m, maks {err.max():.2f} m")
-    for (name, _), e in zip([l for l in LANDMARKS][:len(err)], err):
-        print(f"  {e:5.2f} m  {name}")
+    for n, e in zip(names, err):
+        print(f"  {e:5.2f} m  {n}")
 
     path = OUT / f"homography_frame_{FRAME_NUMBER}.json"
     path.write_text(json.dumps({"frame": FRAME_NUMBER, "H": H.tolist()}, indent=2))

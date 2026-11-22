@@ -1,9 +1,9 @@
 clip,seg,frames,team,label_manual
-clip1,0,1-90,Team A,
-clip1,0,1-90,Team B,
-clip1,1,91-180,Team A,
-clip1,1,91-180,Team B,
-clip1,2,181-270,Team A,
-clip1,2,181-270,Team B,
+clip1,0,Jan-90,Team A,
+clip1,0,Jan-90,Team B,4-5-1
+clip1,1,91-180,Team A,3-3-4
+clip1,1,91-180,Team B,4-5-1
+clip1,2,181-270,Team A,3-3-4
+clip1,2,181-270,Team B,5-4-1
 clip1,3,271-360,Team A,
-clip1,3,271-360,Team B,
+clip1,3,271-360,Team B,5-4-1
